@@ -536,6 +536,7 @@ g <- ggplot(x, aes(x = numbpreg, y = fit)) +
 ```{r, results = 'asis'}
 stargazer::stargazer(tl1, tl2, tl3, tl4, dnam1, dnam2, dnam3, dnam4, dep.var.labels = c("<b> Telomere Length~</b>", "<b>DNAmAge~</b>"), single.row = F, align = T, intercept.bottom = T, no.space = T, dep.var.caption = "", type = "html", out = "CoR_models_reduced.html", report = "vc*",  omit = c("icpc1","icpc2","icpc3","icpc4","icpc5","icpc6","icpc7","icpc8","icpc9","icpc10", "urbanicity"), omit.stat = c("rsq", "f", "ser"), star.char = c("+", "*", "**", "***"), digits = 3, order = c(1, 2, 3, 15, 16), notes = "+p<0.1;*p<0.05;**p<0.01;***p<0.001 ", notes.append = FALSE, covariate.labels = c("Age","No.Pregnancies","SES", "Currently Pregnant (Y)", "No.Pregnancies x SES", "Intercept"))
 
+
 ```
 
 ## models summary table (full)
