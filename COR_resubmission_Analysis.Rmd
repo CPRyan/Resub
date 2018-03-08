@@ -1,0 +1,796 @@
+---
+title: "COR_resubmission_Analysis"
+author: "CPR"
+date: "March 6, 2018"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    code_folding: hide
+    number_sections: yes
+    theme: cerulean
+    toc: yes
+---
+
+__This file will repeat the analysis, but include the correct data for reproductive status__. 
+ * This will change all the tables and figures. 
+ * This _might_ end up changing the sample size!
+I will not include menarcheal age, though we discussed this as an option. Might be good to include a side note in the paper that menarcheal age does not predict parity, so no support for that dimension of life history pace.
+ 
+```{r, include = FALSE, warning = FALSE}
+rm(list=ls())
+library(haven)
+library(readr)
+library(tidyverse)
+library(corrplot)
+library(fmsb)
+library(MASS)
+library(AER)
+library(effects)
+library(ggsci)
+
+select <- dplyr::select
+# Note that select function from MASS clashes with select from dplyr
+# Solution is:
+# select <- dplyr::select
+# OR
+# Simply say dplyr::select everytime you use it. 
+
+source("/Users/CPR/Academic/R /Functions etc./theme_publication.R", echo = TRUE)
+
+setwd("/Users/CPR/Academic/PhD/Projects/eAge/eAge_effects/Pre_Pub_analyses/Resub")
+```
+
+Load DNAmAge data: 
+ * I cannot use *age adjusted* values for DNAmAge, because I have used unrounded Age values that were accurate for 2005, but not for the 2005 blood draw. 
+ * I can calculate a new value called DNAmAgeAdjAge.blood. 
+ * It is not necessary for most of my analyses, which employ DNAmAge, not calculated using 'age' (doesn't use residuals). There I am including the icage05_blood measure separately. 
+ * It is necessary for my final measures predicting parity over subsequent years, because there I need an age corrected value as a predictor...
+  + See more in the Parity test section below. 
+
+```{r, include = FALSE}
+
+eage.unround <- read_csv("~/Academic/PhD/Projects/eAge/eAge_effects/Pre_Pub_analyses/QC_Norm_LisaMcEwan_meth.output_NOTROUNDED.csv")
+
+eage.unround$uncchdid <-as.character(eage.unround$uncchdid)
+
+stargazer::stargazer(eage.unround[,2], nobs = T, mean.sd = T, min.max = T, type = 'latex')
+
+```
+
+Load Dan's data here. Note that I'm using the most recent file sent after finding missing data. ("~/Academic/PhD/Projects/eAge/eAge_effects/Pre_Pub_analyses/remissingdata/**2017-12-01 file for Calen.dta**").
+
+```{r}
+dan.new <- read_dta("~/Academic/PhD/Projects/eAge/eAge_effects/Pre_Pub_analyses/remissingdata/2017-12-01 file for Calen.dta")
+
+dan.new$uncchdid <-as.character(dan.new$uncchdid)
+
+```
+
+Dimensions of the dataset Dan sent are: `r dim(dan.new)`
+
+Merge Dan's and the DNAmAge datasets
+```{r}
+# Merge
+
+raw.dan2 <-dplyr::full_join(dan.new, eage.unround[eage.unround$Female == "1",], by = "uncchdid")
+
+
+table(raw.dan2$numbpreg)
+
+median(raw.dan2$numbpreg, na.rm = T)
+```
+
+
+How many pregnancies (distribution):
+
+Women with 0 pregnancies:
+`r (513)/(513+175+102+29+7+3)`
+
+Women with 1 pregnancy:
+`r (175)/(513+175+102+29+7+3)`
+
+Women with 2 pregnancies:
+`r (102)/(513+175+102+29+7+3)`
+
+Women with 3 pregnancies:
+`r (29)/(513+175+102+29+7+3)`
+
+Women with 4 pregnancies:
+`r (7)/(513+175+102+29+7+3)`
+
+Women with 5 pregnancies:
+`r (3)/(513+175+102+29+7+3)`
+
+
+```
+The new merged dataset "raw.dan" is `rdim(raw.dan)` dimensions.
+
+Load menarcheal age and see that we have data for all individuals. 
+```{r}
+
+menar <-read_dta("/Users/CPR/Academic/PhD/Projects/eAge/eAge_effects/Pre_Pub_analyses/Resub/menagerepro.dta")
+
+menar$uncchdid <-as.character(menar$uncchdid)
+menar$reprostat <-as.factor(menar$reprostat)
+
+raw.dan <-left_join(raw.dan2, menar, by = "uncchdid");
+levels(raw.dan$reprostat)
+
+```
+
+Looks like we have individuals with NaN, presumably NA..
+
+```{r}
+
+raw.dan %>%
+  select(uncchdid, currently_pregnant, reprostat, dnamage, numbpreg) %>%
+  filter(reprostat == "NaN")
+  
+```
+
+Two individuals have NaN for 'reprostat', but 0 for currently_pregnant. One also has NaN for numbpreg, so that's fine. Exclude her. Will defer to currently pregnant for this set. 
+
+Change that individual (23323) to correct reprostat.
+
+```{r}
+
+raw.dan[which(raw.dan$reprostat == "NaN" & raw.dan$numbpreg != "NaN" & raw.dan$dnamage != "NaN"), "reprostat"] <- 0
+
+```
+
+Check all my values for reprostat and pregnancy and then recreate a new pregnancy variable.
+```{r}
+
+table(raw.dan$reprostat)
+table(raw.dan$currently_pregnant)
+
+raw.dan <-raw.dan %>%
+filter(reprostat != "NaN") %>%
+droplevels()
+
+plot(raw.dan$reprostat~raw.dan$currently_pregnant, col = c("#45FF28", "#FF2838","#FFA228", "#36ACFF"))
+
+
+raw.dan$currently_pregnant2 <-ifelse(raw.dan$reprostat == 1, 
+       "pregnant", 
+       "not pregnant")
+
+```
+
+Check consistency between currently pregnant (old) and (new)
+
+```{r}
+plot(as.factor(raw.dan$currently_pregnant)~as.factor(raw.dan$currently_pregnant2))
+
+```
+
+> The above plot shows that ALL women listed as not pregnant from the menar file (reprostat) were not pregnant in the original file. It also shows that some women who were later found to be pregnant (reprostat) were listed as NOT pregnant in the original file. This makes sense.
+
+---
+
+# DNA Models
+
+---
+
+## Output table of DNAm individuals only.
+
+```{r, results = 'asis'}
+
+raw.dan.dnam <-raw.dan %>%
+  select(DNAmAge, icage05_blood, numbpreg, starts_with("icpc"), -contains('fat') , SES3, urbanicity, currently_pregnant, currently_pregnant2) %>%na.omit()
+
+raw.dan.dnam$currently_pregnant2 <-as.factor(raw.dan.dnam$currently_pregnant2)
+
+stargazer::stargazer(data.frame(raw.dan.dnam), type = 'latex')
+
+mean(raw.dan.dnam$icage05_blood - raw.dan.dnam$DNAmAge)
+
+hist(raw.dan.dnam$DNAmAge - raw.dan.dnam$icage05_blood)
+summary(raw.dan.dnam$DNAmAge - raw.dan.dnam$icage05_blood)
+
+```
+
+
+
+## DNAm Model 1, number of observations and VIF
+```{r}
+
+library(fmsb)
+dnam1 <-lm(DNAmAge~icage05_blood + numbpreg, subset(raw.dan.dnam, ))
+summary(dnam1)
+
+
+raw.dan.dnamX <-raw.dan.dnam
+
+raw.dan.dnamX$Cat[raw.dan.dnam$numbpreg == 0] <-0
+raw.dan.dnamX$Cat[raw.dan.dnam$numbpreg == 1] <-1
+raw.dan.dnamX$Cat[raw.dan.dnam$numbpreg == 2] <-2
+raw.dan.dnamX$Cat[raw.dan.dnam$numbpreg >= 3] <-3
+
+
+dnam1b <-lm(DNAmAge~icage05_blood + Cat, subset(raw.dan.dnamX, ))
+summary(dnam1b)
+
+# All models using Cat were <0.05
+
+```
+
+The N is `r nobs(dnam1)`
+
+Variance inflation for this model is `r VIF(dnam1)`
+
+---
+
+## DNAm Model 2, number of observations and VIF
+
+```{r}
+dnam2 <-lm(DNAmAge~icage05_blood + numbpreg + SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity, subset(raw.dan.dnam, ))
+summary(dnam2);nobs(dnam2)
+
+```
+
+The N is `r nobs(dnam2)`
+
+Variance inflation for this model is `r VIF(dnam2)`
+
+---
+
+## DNAm Model 3, number of observations and VIF
+
+```{r}
+dnam3 <-lm(DNAmAge~icage05_blood + numbpreg + SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10  + urbanicity + currently_pregnant2, subset(raw.dan.dnam, ))
+summary(dnam3)
+
+
+tidy.dnam3 <-broom::tidy(dnam3)
+
+est <-tidy.dnam3[3,"estimate"] 
+err <-tidy.dnam3[3,"std.error"]
+
+est
+est + err
+est - err
+
+```
+
+The N is `r nobs(dnam3)`
+
+Variance inflation for this model is `r VIF(dnam2)`
+
+---
+
+## DNAm Model 4, number of observations and VIF
+
+```{r}
+
+dnam4 <-lm(DNAmAge~icage05_blood + numbpreg*SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity + currently_pregnant2, subset(raw.dan.dnam, ))
+summary(dnam4)
+
+anova(dnam1,dnam2,dnam3,dnam4)
+
+```
+
+The N is `r nobs(dnam4)`
+
+Variance inflation for this model is `r VIF(dnam3)`
+
+---
+
+## Plot of DNAm Model 3
+
+### Redo the model using residuals of icage05_blood. 
+
+Note that this measure is nearly identical to "AgeAccelerationResidual" in Horvath's output (which is the measure he recommends). However, because that measure uses the *unrounded* age measures, they will differ very slightly from those calculated here. 
+
+The residuals
+
+```{r, warning = FALSE}
+
+# First, redo the DNAm2 using residuals of icage05_blood
+
+age.rezids <-lm(DNAmAge~icage05_blood, raw.dan.dnam)
+
+rezids <-residuals(age.rezids)
+
+rafalib::mypar(2,2)
+hist(rezids)
+hist(eage.unround$AgeAccelerationResidual)
+hist(raw.dan.dnam$DNAmAge)
+plot(eage.unround$DNAmAge ~ eage.unround$AgeAccelerationResidual)
+
+mean(rezids)
+sd(rezids)
+min(rezids)
+max(rezids)
+```
+
+The model
+
+```{r, warning = FALSE}
+
+dnam6 <-lm(rezids~numbpreg + SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10  + urbanicity + currently_pregnant2, subset(raw.dan.dnam, !is.na(DNAmAge)))
+summary(dnam6)
+
+```
+
+The Plot
+```{r, warning = FALSE}
+
+# AV (partial R2 plot)
+# https://stats.stackexchange.com/questions/125561/what-does-an-added-variable-plot-partial-regression-plot-explain-in-a-multiple
+
+# Code from:
+# https://stackoverflow.com/questions/43950459/use-ggplot-to-plot-partial-effects-obtained-with-effects-library
+
+library(effects)
+
+eff = effect("numbpreg", dnam6, partial.residuals=T)
+
+library(gridExtra)
+
+closest <- function(x, x0) apply(outer(x, x0, FUN=function(x, x0) abs(x - x0)), 1, which.min)
+
+x.fit <- unlist(eff$x.all)
+trans <- I
+x <- data.frame(lower = eff$lower, upper = eff$upper, fit = eff$fit, numbpreg = eff$x$numbpreg)
+xy <- data.frame(x = x.fit, y = x$fit[closest(trans(x.fit), x$numbpreg)] + eff$residuals)
+
+
+obz <-nobs(dnam3)
+beta <-round(broom::tidy(dnam3)[3,"estimate"], 3)
+pval <-round(broom::tidy(dnam3)[3,"p.value"], 3)
+
+
+
+g <- ggplot(x, aes(x = numbpreg, y = fit)) +
+  theme_Publication() +
+  geom_line(size = 1,col = "#3C5488FF") +
+  geom_jitter(width = 0.05, data = xy, aes(x = x, y = y), alpha = 0.7, col = "#3C5488FF") +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, size = 1)+
+  xlab("Number of Pregnancies")+
+  ylab("DNAmAge Acceleration (fitted residuals)")+
+  annotate("text", x=4.2, y=9, label = paste("italic(N)", "==", obz, sep = ""), parse=T, hjust = 0) +
+  annotate("text", x=4.2, y=8, label = paste("beta", "==", beta, sep = ""), parse=T, hjust = 0) +
+  annotate("text", x=4.2, y=7, label = paste("italic(P)", "==", pval, sep = ""), parse=T, hjust = 0);g
+
+
+#ggsave("DNAm_Preg.pdf", height = 5, width = 6)
+
+# Check
+plot(eff)
+```
+
+
+---
+
+# Telomere Models
+
+Repeat with Telomere length
+Using "telomereICwell" variable
+
+Setting up TL dataset - not shown 
+*(reasons for separate data pull for TL embedded in code)*
+```{r}
+
+# I create a new dataframe because lm uses all datapoints. So the N keeps changing for the 3 models.
+
+# Note that I had to remove the icpcfat.. values after pulling all with icpc
+
+raw.dan.tl <-raw.dan %>%
+  select(telomereICwell, icage05_blood, numbpreg, starts_with("icpc"), -contains('fat') , SES3, urbanicity, currently_pregnant2, agemens) %>%
+  na.omit()
+
+raw.dan.tl$currently_pregnant2 <-as.factor(raw.dan.tl$currently_pregnant2)
+
+```
+
+---
+
+
+## Summary of full data (from all including TL)
+
+```{r results = 'asis'}
+foo.new <-raw.dan %>%
+  select(icage05_blood, DNAmAge, numbpreg, momeducation, dadeducation, currently_pregnant2)
+
+stargazer::stargazer(foo.new, nobs = T, mean.sd = T, min.max = T, type = 'latex')
+
+
+```
+
+
+
+# Block to check for TL age in this pop, as Thom suggested.
+```{r}
+raw.dan %>%
+  select(telomereICwell) %>%
+  summary() 
+
+
+sd(raw.dan$telomereICwell, na.rm = T)
+
+
+hist(raw.dan$telomereICwell)
+```
+
+---
+
+## Telomere Model 1, number of observations and VIF
+```{r}      
+
+tl1 <-lm(telomereICwell ~ icage05_blood + numbpreg, subset(raw.dan.tl,))
+summary(tl1)
+
+
+
+raw.dan.tlX <-raw.dan.tl
+
+raw.dan.tlX$Cat[raw.dan.tl$numbpreg == 0] <-0
+raw.dan.tlX$Cat[raw.dan.tl$numbpreg == 1] <-1
+raw.dan.tlX$Cat[raw.dan.tl$numbpreg == 2] <-2
+raw.dan.tlX$Cat[raw.dan.tl$numbpreg >= 3] <-3
+
+tl1b <-lm(telomereICwell ~ icage05_blood + Cat, subset(raw.dan.tlX,))
+summary(tl1b)
+
+# All models using Cat were <0.05
+
+```
+
+TL1 has N = `r nobs(tl1)`
+
+VIF not required - same covariates as dnam1
+
+---
+
+
+## Telomere Model 2, number of observations and VIF
+
+```{r}
+
+tl2 <-lm(telomereICwell~icage05_blood + numbpreg+SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity, subset(raw.dan.tl, ))
+summary(tl2)
+
+```
+
+TL2 has N = `r nobs(tl2)`
+
+VIF is the same as for DNAmAge data
+
+## Telomere Model 3, number of observations and VIF
+
+```{r}
+
+tl3 <-lm(telomereICwell~icage05_blood + numbpreg + SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 +  urbanicity + currently_pregnant2, subset(raw.dan.tl,))
+summary(tl3);nobs(tl3)
+
+```
+
+
+TL2 has N = `r nobs(tl3)`
+
+VIF not required - same covariates as dnam2
+
+---
+
+## Telomere Model 4, number of observations and VIF
+
+```{r}
+tl4 <-lm(telomereICwell~icage05_blood + numbpreg*SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity + currently_pregnant2, subset(raw.dan.tl, ))
+summary(tl4)
+
+```
+
+TL3 has N = `r nobs(tl4)`
+
+VIF not required - same covariates as dnam3
+
+
+---
+
+Multicollinearity not a problem (same models)
+
+## Plot of Telomere Model 3 (partial regression controlling for others)
+
+```{r, warning = FALSE}
+eff = effect("numbpreg", tl3, partial.residuals=T)
+
+closest <- function(x, x0) apply(outer(x, x0, FUN=function(x, x0) abs(x - x0)), 1, which.min)
+
+x.fit <- unlist(eff$x.all)
+trans <- I
+x <- data.frame(lower = eff$lower, upper = eff$upper, fit = eff$fit, numbpreg = eff$x$numbpreg)
+xy <- data.frame(x = x.fit, y = x$fit[closest(trans(x.fit), x$numbpreg)] + eff$residuals)
+
+
+
+obz <-nobs(tl3)
+beta <-round(broom::tidy(tl3)[3,"estimate"], 3)
+pval <-round(broom::tidy(tl3)[3,"p.value"], 3)
+
+
+
+
+g <- ggplot(x, aes(x = numbpreg, y = fit)) +
+  theme_Publication() +
+  geom_line(size = 1,col = "#3C5488FF") +
+  geom_jitter(width = 0.07, data = xy, aes(x = x, y = y), alpha = 0.7, col = "#3C5488FF") +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, size = 1)+
+  xlab("Number of Pregnancies")+
+  ylab("Telomere Length (fitted residuals)")+
+  annotate("text", x=4.1, y=1.5, label = paste("italic(N)", "==", obz, sep = ""), parse=T, hjust = 0) +
+  annotate("text", x=4.1, y=1.4, label = paste("beta", "==", beta, sep = ""), parse=T, hjust = 0) +
+  annotate("text", x=4.1, y=1.3, label = paste("italic(P)", "==", pval, sep = ""), parse=T, hjust = 0);g
+
+
+# ggsave("TL_Preg.pdf", height = 5, width = 6)
+
+```
+
+---
+
+# DNAm and TL 
+
+## models summary table (reduced)
+```{r, results = 'asis'}
+stargazer::stargazer(tl1, tl2, tl3, tl4, dnam1, dnam2, dnam3, dnam4, dep.var.labels = c("<b> Telomere Length~</b>", "<b>DNAmAge~</b>"), single.row = F, align = T, intercept.bottom = T, no.space = T, dep.var.caption = "", type = "html", out = "CoR_models_reduced.html", report = "vc*",  omit = c("icpc1","icpc2","icpc3","icpc4","icpc5","icpc6","icpc7","icpc8","icpc9","icpc10", "urbanicity"), omit.stat = c("rsq", "f", "ser"), star.char = c("+", "*", "**", "***"), digits = 3, order = c(1, 2, 3, 15, 16), notes = "+p<0.1;*p<0.05;**p<0.01;***p<0.001 ", notes.append = FALSE, covariate.labels = c("Age","No.Pregnancies","SES", "Currently Pregnant (Y)", "No.Pregnancies x SES", "Intercept"))
+
+```
+
+## models summary table (full)
+```{r, results = 'asis'}
+stargazer::stargazer(tl1, tl2, tl3, tl4, dnam1, dnam2, dnam3, dnam4, dep.var.labels = c("<b> Telomere Length~</b>", "<b>DNAmAge~</b>"), single.row = F, align = T, intercept.bottom = T, no.space = T, dep.var.caption = "", type = "html", out = "CoR_models.html", star.char = c("+", "*", "**", "***"), digits = 3, report = "vcp*", order = c(1,2,4:13,3,14,15,16,17,18), notes = "+p<0.1;*p<0.05;**p<0.01;***p<0.001 ", notes.append = FALSE, covariate.labels = c("Age",
+                                          "No.Pregnancies",
+                                          "PC1",
+                                          "PC2",
+                                          "PC3",
+                                          "PC4",
+                                          "PC5",
+                                          "PC6",
+                                          "PC7",
+                                          "PC8",
+                                          "PC9",
+                                          "PC10",
+                                          "SES-score",
+                                          "Urbanicity-score",
+                                          "Currently Pregnancy (Y)",
+                                          "No.Pregnancies*SES-score",
+                                          "Intercept"))
+
+```
+
+---
+
+## Correlation bt. DNAm and TL (age not factored out)
+```{r}
+dnam.tl <-lm(telomereICwell~DNAmAge, data = raw.dan)
+summary(dnam.tl)
+nobs(dnam.tl)
+```
+
+---
+## Correlation bt. DNAm and TL (age factored out)
+```{r}
+tl.age <-lm(telomereICwell~icage05_blood, subset(raw.dan, !is.na(DNAmAge) & !is.na(telomereICwell)))
+# summary(tl.age)
+
+dnam.age <-lm(DNAmAge~icage05_blood, subset(raw.dan, !is.na(DNAmAge) & !is.na(telomereICwell)))
+# summary(dnam.age)
+
+dnam.tl.resid <-lm(residuals(tl.age)~residuals(dnam.age))
+summary(dnam.tl.resid)
+
+```
+
+---
+
+# Parity Analyses
+
+**NB** - *this is using the 'incorrect' epigenetic age data (calculated with  icage05, not icage05_blood). Any age accel values will reflect this. Simple measures such as DNAmAge will not.* **To get around this problem I have calculated a new measure of AgeAccel (.blood)**
+
+## Load Parity Data (not shown)
+```{r}
+parity <- read_dta("~/Academic/PhD/Projects/eAge/eAge_effects/Pre_Pub_analyses/05to09parity.dta")
+
+```
+---
+
+## Setup Parity Data. Create new AgeAccel measure using icage05_blood. Compare ages. 
+
+Because:
+DNAmAge ~ Age  = DNAmAgeAdjAge
+
+Then...
+DNAmAge ~ icage05_blood = DNAmAgeAdjAge
+
+**NB**: These may be a bit off (R^2 != 1) because resids for DNAmAdjAge can be calculated for all individuals (males and females) but in my analyses, it's a subset of females only.
+
+```{r, warning = FALSE}
+# Merge parity + raw.dan:
+parity$uncchdid <-as.character(parity$uncchdid)
+
+parity.big <-left_join(raw.dan, parity, by = "uncchdid")
+
+# Make BioAge1H0AdjAge.blood
+# DNAmAge ~ icage05_blood = DNAmAgeAdjAge
+
+foo.age <-lm(parity.big$DNAmAge ~ parity.big$icage05_blood, na.action = na.exclude) 
+
+parity.big$DNAmAgeAdjAge <- residuals(foo.age)
+
+ggplot(parity.big, aes(AgeAccelerationResidual, DNAmAgeAdjAge)) +
+  geom_point()+
+  geom_abline()
+
+# Ok, small difference, but worth doing.
+```
+
+---
+
+
+## DNAmAge predicting parity...
+```{r}
+# glm poisson, quasipoisson, or negbinomial
+# Outcome = repro05to09
+# Predictors = days05to09 + parity05 + BioAge1H0AdjAge.blood
+
+parity.big$parity05 <-as.integer(parity.big$parity05)
+parity.big$repro05to09 <-as.integer(parity.big$repro05to09)
+
+
+pois <-glm(repro05to09 ~ days05to09 + parity05 + DNAmAgeAdjAge, family = "poisson", data = parity.big); summary(pois)
+
+
+
+# Check the overdispersion using the following info:
+# https://stats.stackexchange.com/questions/66586/is-there-a-test-to-determine-whether-glm-overdispersion-is-significant
+# library(AER)
+
+dispersiontest(pois)
+# Poisson model does not appear to be overdispersed. (P < 0.05 suggest overdispersion)
+
+### JUst in Case, reran using quasi and nb and no evidence for DNAmAge predicting reproduction between 05 and 09
+
+# qpois <-glm(repro05to09 ~ days05to09 + parity05 + DNAmAgeAdjAge.blood, family = "quasipoisson", data = parity.big); summary(qpois)
+# 
+# # library(MASS)
+# 
+# nb <-glm.nb(repro05to09 ~ days05to09 + parity05 + DNAmAgeAdjAge.blood, data = parity.big); summary(nb)
+
+pois.min <-glm(repro05to09 ~ days05to09 + DNAmAgeAdjAge, family = "poisson", data = parity.big); summary(pois.min)
+
+```
+> Summary: Poisson GLM does not show signs that DNAmAge in 05 predicts parity between 05 and 09, accounting for the time between measurement and parity in 05. 
+> Poisson model does not show signs of overdispersion. Negative binomial shows the same outcome essentially. 
+
+
+---
+
+## TELOMERE length predicting parity...
+```{r}
+pois.tl <-glm(repro05to09 ~ days05to09 + parity05 + telomereICwell, family = "poisson", data = parity.big); summary(pois.tl)
+
+dispersiontest(pois.tl)
+
+# NO evidence for overdispersion of the TL model. (P < 0.05 suggest over/under dispersion)
+
+# Just in case, check quasi and NB. No evidence again.
+# 
+# qpois.tl <-glm(repro05to09 ~ days05to09 + parity05 + TL_age_residual, family = "quasipoisson", data = parity.big); summary(qpois.tl)
+# 
+# 
+# nb.TL <-glm.nb(repro05to09 ~ days05to09 + parity05 + TL_age_residual, data = parity.big); summary(nb.TL)
+
+pois.tl.min <-glm(repro05to09 ~ days05to09  + telomereICwell, family = "poisson", data = parity.big); summary(pois.tl.min)
+
+```
+
+> Summary: Poisson GLM does not show signs that TL in 05 predicts parity between 05 and 09, accounting for the time between measurement and parity in 05. 
+> Poisson model does not show signs of overdispersion. Negative binomial shows the same outcome essentially. 
+
+---
+
+### Table of models of TL/DNAmAge predicting parity 05-09:
+
+```{r, results = 'asis'}
+stargazer::stargazer(pois.tl.min, pois.tl, pois.min, pois, dep.var.labels = c("<b>Parity 2005-2009</b>"), 
+                     column.labels = c("<b>Age Adjusted TL~</b>"," ","<b>Age Adjusted DNAmAge</b>~"),
+                     single.row = F, align = T, intercept.bottom = T, no.space = T,
+                     star.char = c("+", "*", "**", "***"), digits = 3, report = "vcp*",
+                     notes = "+p<0.1;*p<0.05;**p<0.01;***p<0.001 ", notes.append = FALSE,
+                     covariate.labels = c("Measurement time bt. 2005-2009 (Days)", 
+                                          "Parity in 2005",
+                                          "Age Adjusted Telomere Length in 2005",
+                                          "Age Adjusted DNAmAge in 2005",
+                                          "Intercept"),
+                     type = "html", 
+                     out = "parity_pois.html", 
+                     dep.var.caption = "")
+
+
+# broom::tidy(pois)
+# 
+# broom::tidy(pois.tl)
+
+```
+
+
+```{r, warning = FALSE, fig.cap="Plot of reproduction between 05 and 09, and correlation with DNAmAge (blood) with smooth fit line"}
+
+pois.data <-parity.big %>%
+  select(repro05to09, days05to09, parity05, DNAmAgeAdjAge) %>%
+  na.omit()
+
+
+```
+
+
+```{r}
+#  pois_smooth <- function(...) {
+#   geom_smooth(method = "glm", method.args = list(family = "poisson"), ...)
+# }
+
+g <- ggplot(pois.data, aes(x = DNAmAgeAdjAge, y = repro05to09)) +
+  theme_Publication() +
+  #geom_smooth(size = 1,col = "#3C5488FF") +
+  geom_jitter(height = 0.05, alpha = 0.7, col = "#3C5488FF")+
+  xlab("DNAmAge")+
+  ylab("Predicted Parity (2005-2009)");g
+
+```
+
+```{r}
+h <- ggplot(parity.big, aes(x = telomereICwell, y = repro05to09)) +
+  theme_Publication() +
+  #geom_smooth(size = 1,col = "#3C5488FF") +
+  geom_jitter(height = 0.05, alpha = 0.7, col = "#3C5488FF")+
+  xlab("Telomere Length")+
+  ylab("Predicted Parity (2005-2009)");h
+
+```
+
+
+
+
+
+```{r, include= FALSE}
+
+# See example for the effects package for how I did this. 
+pois <-glm(repro05to09 ~ days05to09 + parity05 + DNAmAgeAdjAge, family = "poisson", data = pois.data); summary(pois)
+eff.dnam <- allEffects(pois, xlevels=list(parity05=seq(0, 4, 1)), typical = mean,partial.residuals=T)
+
+plot(eff.dnam,'DNAmAgeAdjAge', ylab = "Prob(Parity05-09)", xlevels = list(parity05=seq(0, 4, 1)), multiline = TRUE)
+
+```
+
+```{r}
+p1 <- ggplot(raw.dan,aes(x=agemens,y=as.numeric(numbpreg)))+
+  stat_density2d(aes(fill=..level..), geom="polygon") +
+  theme(legend.position = "none");p1
+```
+
+
+```{r, include= FALSE}
+# icpcfat05
+# icbmi05
+# summary(lm(icbmi05~SES3, raw.dan))
+# summary(lm(icpcfat05~SES3, raw.dan))
+# summary(lm(icbmi05~numbpreg, raw.dan))
+# summary(lm(icpcfat05~numbpreg, raw.dan))
+
+dnam.fat <-lm(DNAmAge~icage05_blood + numbpreg*icpcfat05 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10  + urbanicity + currently_pregnant2, subset(raw.dan, ))
+summary(dnam.fat)
+
+
+
+
+tl.fat <-lm(telomereICwell~icage05_blood + numbpreg+icpcfat05 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10  + urbanicity + currently_pregnant2 + agemens, subset(raw.dan, ))
+summary(tl.fat)
+
+```
+
+```{r}
+sessionInfo()
+```
+
