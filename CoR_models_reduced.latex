@@ -1,0 +1,27 @@
+
+% Table created by stargazer v.5.2 by Marek Hlavac, Harvard University. E-mail: hlavac at fas.harvard.edu
+% Date and time: Thu, Mar 08, 2018 - 20:29:04
+% Requires LaTeX packages: dcolumn 
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lD{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} } 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+\\[-1.8ex] & \multicolumn{4}{c}{Telomere Length~} & \multicolumn{4}{c}{DNAmAge~} \\ 
+\\[-1.8ex] & \multicolumn{1}{c}{(1)} & \multicolumn{1}{c}{(2)} & \multicolumn{1}{c}{(3)} & \multicolumn{1}{c}{(4)} & \multicolumn{1}{c}{(5)} & \multicolumn{1}{c}{(6)} & \multicolumn{1}{c}{(7)} & \multicolumn{1}{c}{(8)}\\ 
+\hline \\[-1.8ex] 
+ Age & -0.047^{**} & -0.029^{+} & -0.028^{+} & -0.029^{+} & 0.485 & 0.667 & 0.656 & 0.645 \\ 
+  No.Pregnancies & -0.014^{*} & -0.013^{*} & -0.014^{*} & -0.016^{*} & 0.363^{*} & 0.326^{*} & 0.459^{**} & 0.510^{**} \\ 
+  SES &  & -0.006 & -0.006 & -0.004 &  & -0.180 & -0.214^{+} & -0.291^{+} \\ 
+  Currently Pregnant (Y) &  &  & 0.011 & 0.011 &  &  & -1.472^{**} & -1.460^{**} \\ 
+  No.Pregnancies x SES &  &  &  & -0.004 &  &  &  & 0.106 \\ 
+  Intercept & 1.826^{**} & 1.337^{**} & 1.332^{**} & 1.343^{**} & 14.818 & 10.319 & 10.611 & 10.850 \\ 
+ \hline \\[-1.8ex] 
+Observations & \multicolumn{1}{c}{821} & \multicolumn{1}{c}{821} & \multicolumn{1}{c}{821} & \multicolumn{1}{c}{821} & \multicolumn{1}{c}{397} & \multicolumn{1}{c}{397} & \multicolumn{1}{c}{397} & \multicolumn{1}{c}{397} \\ 
+Adjusted R$^{2}$ & \multicolumn{1}{c}{0.015} & \multicolumn{1}{c}{0.063} & \multicolumn{1}{c}{0.062} & \multicolumn{1}{c}{0.062} & \multicolumn{1}{c}{0.011} & \multicolumn{1}{c}{0.041} & \multicolumn{1}{c}{0.067} & \multicolumn{1}{c}{0.067} \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{8}{r}{+p<0.1;*p<0.05;**p<0.01;***p<0.001 } \\ 
+\end{tabular} 
+\end{table} 
