@@ -589,6 +589,7 @@ summary(dnam.tl.resid)
 parity <- read_dta("~/Academic/PhD/Projects/eAge/eAge_effects/Pre_Pub_analyses/05to09parity.dta")
 
 ```
+
 ---
 
 ## Setup Parity Data. Create new AgeAccel measure using icage05_blood. Compare ages. 
@@ -622,7 +623,6 @@ ggplot(parity.big, aes(AgeAccelerationResidual, DNAmAgeAdjAge)) +
 ```
 
 ---
-
 
 ## DNAmAge predicting parity...
 ```{r}
@@ -687,7 +687,6 @@ pois.tl.min <-glm(repro05to09 ~ days05to09  + telomereICwell, family = "poisson"
 ---
 
 ### Table of models of TL/DNAmAge predicting parity 05-09:
-
 ```{r, results = 'asis'}
 stargazer::stargazer(pois.tl.min, pois.tl, pois.min, pois, dep.var.labels = c("<b>Parity 2005-2009</b>"), 
                      column.labels = c("<b>Age Adjusted TL~</b>"," ","<b>Age Adjusted DNAmAge</b>~"),
@@ -720,21 +719,23 @@ pois.data <-parity.big %>%
 
 ```
 
-
+### Figure: DNAmAge and future parity
 ```{r}
 #  pois_smooth <- function(...) {
 #   geom_smooth(method = "glm", method.args = list(family = "poisson"), ...)
 # }
 
-g <- ggplot(pois.data, aes(x = DNAmAgeAdjAge, y = repro05to09)) +
+g <- ggplot(pois.data, aes(x = repro05to09, y = DNAmAgeAdjAge,)) +
   theme_Publication() +
-  #geom_smooth(size = 1,col = "#3C5488FF") +
-  geom_jitter(height = 0.05, alpha = 0.7, col = "#3C5488FF")+
-  xlab("DNAmAge")+
-  ylab("Predicted Parity (2005-2009)");g
+  geom_smooth(method = lm, size = 0,col = "#3C5488FF") +
+  geom_jitter(width = 0.05, alpha = 0.7, col = "#3C5488FF")+
+  ylab("DNAmAge")+
+  xlab("Predicted Parity (2005-2009)");g
 
 ```
 
+
+### Figure: TL and future parity
 ```{r}
 h <- ggplot(parity.big, aes(x = telomereICwell, y = repro05to09)) +
   theme_Publication() +
@@ -745,10 +746,7 @@ h <- ggplot(parity.big, aes(x = telomereICwell, y = repro05to09)) +
 
 ```
 
-
-
-
-
+### Effects plot of DNAmAge and Parity...
 ```{r, include= FALSE}
 
 # See example for the effects package for how I did this. 
@@ -759,13 +757,140 @@ plot(eff.dnam,'DNAmAgeAdjAge', ylab = "Prob(Parity05-09)", xlevels = list(parity
 
 ```
 
+# DNA Models - 3+ Grouped
+
+## DNA model 1b
+```{r}
+raw.dan.dnamX <-raw.dan.dnam
+
+raw.dan.dnamX$numbpreg3plus[raw.dan.dnam$numbpreg == 0] <-0
+raw.dan.dnamX$numbpreg3plus[raw.dan.dnam$numbpreg == 1] <-1
+raw.dan.dnamX$numbpreg3plus[raw.dan.dnam$numbpreg == 2] <-2
+raw.dan.dnamX$numbpreg3plus[raw.dan.dnam$numbpreg >= 3] <-3
+
+
+dnam1b <-lm(DNAmAge~icage05_blood + numbpreg3plus, subset(raw.dan.dnamX, ))
+summary(dnam1b)
+
+# All models using Cat were <0.05
+
+```
+
+## DNAm Model 2b
+```{r}
+dnam2b <-lm(DNAmAge~icage05_blood + numbpreg3plus + SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity, subset(raw.dan.dnamX, ))
+summary(dnam2b);nobs(dnam2b)
+
+```
+
+## DNAm Model 3b
+
+```{r}
+dnam3b <-lm(DNAmAge~icage05_blood + numbpreg3plus + SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10  + urbanicity + currently_pregnant2, subset(raw.dan.dnamX, ))
+summary(dnam3b)
+
+```
+
+---
+
+## DNAm Model 4b
+
+```{r}
+
+dnam4b <-lm(DNAmAge~icage05_blood + numbpreg3plus*SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity + currently_pregnant2, subset(raw.dan.dnamX, ))
+summary(dnam4b)
+
+anova(dnam1b,dnam2b,dnam3b,dnam4b)
+
+```
+
+# TL Models - 3+ Grouped
+
+## Telomere Model 1b
+
+```{r}      
+
+
+raw.dan.tlX <-raw.dan.tl
+
+raw.dan.tlX$numbpreg3plus[raw.dan.tl$numbpreg == 0] <-0
+raw.dan.tlX$numbpreg3plus[raw.dan.tl$numbpreg == 1] <-1
+raw.dan.tlX$numbpreg3plus[raw.dan.tl$numbpreg == 2] <-2
+raw.dan.tlX$numbpreg3plus[raw.dan.tl$numbpreg >= 3] <-3
+
+tl1b <-lm(telomereICwell ~ icage05_blood + numbpreg3plus, subset(raw.dan.tlX,))
+summary(tl1b)
+
+# All models using Cat were <0.05
+
+```
+
+
+---
+
+## Telomere Model 2b
+
+```{r}
+
+tl2b <-lm(telomereICwell~icage05_blood + numbpreg3plus+SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity, subset(raw.dan.tlX, ))
+summary(tl2b)
+
+```
+
+
+## Telomere Model 3b
+
+```{r}
+
+tl3b <-lm(telomereICwell~icage05_blood + numbpreg3plus + SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 +  urbanicity + currently_pregnant2, subset(raw.dan.tlX,))
+summary(tl3b)
+
+```
+
+
+---
+
+## Telomere Model 4b
+
+```{r}
+tl4b <-lm(telomereICwell~icage05_blood + numbpreg3plus*SES3 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10 + urbanicity + currently_pregnant2, subset(raw.dan.tlX, ))
+summary(tl4b)
+
+```
+
+
+# Summary of Grouped pregnancies
+## models summary table (full)
+```{r, results = 'asis'}
+stargazer::stargazer(tl1b, tl2b, tl3b, tl4b, dnam1b, dnam2b, dnam3b, dnam4b, dep.var.labels = c("Telomere Length~", "DNAmAge~"), single.row = F, align = T, intercept.bottom = T, no.space = T, dep.var.caption = "", type = "html", out = "CoR_models_3plus.html", star.char = c("+", "*", "**", "***"), digits = 3, report = "vcp*", order = c(1,2,4:13,3,14,15,16,17,18), notes = "+p<0.1;*p<0.05;**p<0.01;***p<0.001 ", notes.append = FALSE, covariate.labels = c("Age",
+                                          "No.Pregnancies",
+                                          "PC1",
+                                          "PC2",
+                                          "PC3",
+                                          "PC4",
+                                          "PC5",
+                                          "PC6",
+                                          "PC7",
+                                          "PC8",
+                                          "PC9",
+                                          "PC10",
+                                          "SES-score",
+                                          "Urbanicity-score",
+                                          "Currently Pregnancy (Y)",
+                                          "No.Pregnancies*SES-score",
+                                          "Intercept"))
+
+```
+
+
+# Menarcheal Age
 ```{r}
 p1 <- ggplot(raw.dan,aes(x=agemens,y=as.numeric(numbpreg)))+
   stat_density2d(aes(fill=..level..), geom="polygon") +
   theme(legend.position = "none");p1
 ```
 
-
+# Body Fat analysis (Not run)
 ```{r, include= FALSE}
 # icpcfat05
 # icbmi05
@@ -778,12 +903,11 @@ dnam.fat <-lm(DNAmAge~icage05_blood + numbpreg*icpcfat05 + icpc1 + icpc2 + icpc3
 summary(dnam.fat)
 
 
-
-
 tl.fat <-lm(telomereICwell~icage05_blood + numbpreg+icpcfat05 + icpc1 + icpc2 + icpc3 + icpc4 + icpc5 + icpc6 + icpc7 + icpc8 + icpc9 + icpc10  + urbanicity + currently_pregnant2 + agemens, subset(raw.dan, ))
 summary(tl.fat)
 
 ```
+
 
 ```{r}
 sessionInfo()
